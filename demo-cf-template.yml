@@ -1,0 +1,112 @@
+Resources:
+  QueueDemoDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: awsd-officialcourse-demo-amazon-sqs-DLQ
+      Tags: 
+        - Key: Course
+          Value: AWSD
+
+  QueueDemo:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: awsd-officialcourse-demo-amazon-sqs
+      Tags: 
+        - Key: Course
+          Value: AWSD
+
+  TableDemo:
+    Type: AWS::DynamoDB::Table
+    Properties: 
+      AttributeDefinitions: 
+        -
+          AttributeName: "messageId"
+          AttributeType: "S"
+      BillingMode: PAY_PER_REQUEST
+      KeySchema: 
+        -
+          AttributeName: "messageId"
+          KeyType: "HASH"
+      TableName: awsd-officialcourse-demo-amazon-sqs
+      Tags: 
+        - Key: Course
+          Value: AWSD
+  
+  FunctionDemoRole:
+    Type: AWS::IAM::Role
+    Properties: 
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies: 
+        - PolicyName: get-s3-put-dynamodb
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                Resource: !GetAtt TableDemo.Arn
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource: !GetAtt QueueDemo.Arn
+      RoleName: awsd-officialcourse-demo-amazon-sqs
+      Tags: 
+        - Key: Course
+          Value: AWSD
+
+  FunctionDemo:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code: 
+        ZipFile: |
+          const AWS = require('aws-sdk');
+
+          const dynamodb = new AWS.DynamoDB();
+
+          exports.handler = async (event) => {
+              // TODO implement
+              const response = {
+                  statusCode: 200,
+                  body: JSON.stringify(event),
+              };
+              if(parseInt(event.Records[0].messageAttributes.Value.stringValue) % 2 == 0) {
+                  dynamodb.putItem({
+                      TableName: process.env.table_name,
+                      Item: {
+                          'messageId': {
+                              S: event.Records[0].messageId
+                          }
+                      }
+                  }, function (err, res) {
+                    if (err) return console.log(err);
+                    console.log(res);
+                    return response;
+                  });
+              } else {
+                  throw new Error('Error', response);
+              }
+              
+          };
+      Environment: 
+        Variables:
+          table_name: !Ref TableDemo
+      FunctionName: awsd-officialcourse-demo-amazon-sqs
+      Handler: index.handler
+      MemorySize: 128
+      PackageType: Zip
+      Role: !GetAtt FunctionDemoRole.Arn
+      Runtime: nodejs12.x
+      Tags: 
+        - Key: Course
+          Value: AWSD
+      Timeout: 5
